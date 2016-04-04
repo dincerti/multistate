@@ -1,0 +1,32 @@
+---
+title: "Continuous Time Multi-State Models and Microsimulation"
+output: beamer_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Continuous versus Discrete Time
+
+## Individual versus Cohort Models
+
+## Modeling Assumptions
+* Time homogeneous markov models 
+    + Transition intensities are constant over time
+- Time inhomogeneous (clock-forward) markov models
+    + Transition intensity depends on time since entering into the initial state
+- Semi-markov models (clock-reset)
+    + Transition intensity depends on time in current state, but not time since 
+    entering the initial state
+
+## Slide with R
+```{r cars, echo = TRUE}
+summary(cars)
+```
+
+## Slide with Plot
+```{r pressure}
+plot(pressure)
+```
+
