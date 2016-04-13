@@ -1,3 +1,5 @@
+# this R code shows how one might use multi-state models to quantify
+# the long-term QALYs of a treatment relative to a control
 rm(list = ls())
 setwd("/Users/devinincerti/Dropbox/Projects/Multi-State Survival")
 
@@ -5,8 +7,8 @@ setwd("/Users/devinincerti/Dropbox/Projects/Multi-State Survival")
 source("sim.R")
 source("msplots.R")
 source("misc.R")
-packages <- c("mstate", "flexsurv", "mvtnorm",  
-              "ggplot2", "data.table", "tables")
+packages <- c("mstate", "flexsurv", "mvtnorm",
+              "dplyr","ggplot2", "data.table", "tables")
 lapply(packages, library, character.only = TRUE)
 theme_set(theme_bw())
 set.seed(101)
@@ -17,7 +19,6 @@ library("mstate")
 data(prothr)
 dat <- prothr
 rm(prothr)
-dat <- rename(dat, ftreat = treat)
 dat$years <- (dat$Tstop - dat$Tstart)/365.25
 dat <- dat[dat$years != 0 & dat$Tstop < 3500 & dat$years < 9, ]
 dat$trans <- as.factor(dat$trans)
@@ -27,7 +28,7 @@ dat$Tstop <- dat$Tstop/365.25
 ## @knitr show_data
 tmp <- data.frame(dat[, c("id", "from", "to", "trans",
                           "Tstart", "Tstop", "years", 
-                          "status", "ftreat")])
+                          "status", "treat")])
 tmp$Tstart <- round(tmp$Tstart, 2)
 tmp$Tstop <- round(tmp$Tstop, 2)
 tmp$years <- round(tmp$years, 2)
@@ -39,6 +40,7 @@ events(dat)$Freq
 
 ## ---- FITTING MULTI-STATE MODELS ---------------------------------------------
 ## @knitr fit_cox
+dat <- rename(dat, ftreat = treat)
 dat$treat <- ifelse(dat$ftreat == "Placebo", 0, 1)
 dat <- expand.covs(dat, "treat")
 crcox <- coxph(Surv(years, status) ~ strata(trans) + treat.1 + treat.2 + 
@@ -149,7 +151,7 @@ latex(los.tab)
 # in newdata are all the same!
 sim.flexsurv.t <- sim.fmsm(x = crgomp, trans = tmat, newdata = data.frame(treat = 1),
                          t = 30, M = 100000)
-mean(sim.flexsurv.t$t[, ncol(sim.flexsurv$t)])
+mean(sim.flexsurv.t$t[, ncol(sim.flexsurv.t$t)])
 mean(sim.t$t[, ncol(sim.t$t)])
 
 ## @knitr psa

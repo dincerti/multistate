@@ -1,0 +1,74 @@
+
+% pacakges
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{fontspec}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usetikzlibrary{calc}
+\usetikzlibrary{arrows.meta}
+
+% beamer template
+\setbeamertemplate{frametitle}
+  {\begin{centering}\smallskip
+   \insertframetitle\par
+   \smallskip\end{centering}}
+\setbeamertemplate{itemize item}{$\bullet$}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[text line]{%
+    \hfill\strut{%
+        \scriptsize\sf\color{black!60}%
+        \quad\insertframenumber
+    }%
+    \hfill
+}
+
+\setbeamertemplate{footline}[page number]
+
+% Define some colors
+\def\charcoal{4D4944}
+\def\xgold{989400}
+\def\xblue{4a7798}
+\def\xorange{9a3b00}
+
+\definecolor{DarkCharcoal}{HTML}{\charcoal}
+\colorlet{Charcoal}{DarkCharcoal!85!white}
+\colorlet{HalfLightCharcoal}{Charcoal!66!white}
+\colorlet{LightCharcoal}{Charcoal!50!white}
+
+\def\lightenfactor{!70!white}
+\def\darkenfactor{!85!black}
+
+\definecolor{XGold}{HTML}{\xgold}
+\definecolor{XBlue}{HTML}{\xblue}
+\definecolor{XOrange}{HTML}{\xorange}
+\colorlet{XLightGold}{XGold\lightenfactor}
+\colorlet{XLightBlue}{XBlue\lightenfactor}
+\colorlet{XLightOrange}{XOrange\lightenfactor}
+\colorlet{XDarkGold}{XGold\darkenfactor}
+\colorlet{XDarkBlue}{XBlue\darkenfactor}
+\colorlet{XDarkOrange}{XOrange\darkenfactor}
+
+\colorlet{AlertColor}{XOrange}
+
+% Set beamer colors 
+\setbeamercolor{title}{fg=XOrange}
+\setbeamercolor{frametitle}{fg=XDarkBlue}
+\setbeamercolor{normal text}{fg=black}
+
+\setbeamercolor{block title}{fg=black,bg=XGold!25!white}
+\setbeamercolor{block body}{fg=black,bg=XGold!25!white}
+\setbeamercolor{alerted text}{fg=AlertColor}
+%% \setbeamercolor{palette primary}{fg=white,bg=black}
+%% \setbeamercolor{palette secondary}{fg=white,bg=black}
+%% \setbeamercolor{palette tertiary}{fg=white,bg=black}
+\setbeamercolor{itemize item}{fg=black}
+
+% Set fonts
+\setsansfont{Futura}
+\setmonofont{Monaco}
+
+% Fix knitr bug for .{allowframebreaks}
+\widowpenalties 1 150
+
+% Add frame for new sections
+%\AtBeginSection{\frame{\sectionpage}}

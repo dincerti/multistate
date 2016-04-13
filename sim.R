@@ -36,9 +36,18 @@ SimPrep <- function(x){
     d <- x$dlist
     d$r <- x$dfns$r
     int.indx <- which(d$pars == d$location)
-    d$parvals <- x$res.t[x$basepars, "est"]
-    d$parvals[int.indx] <- NA
-    d$beta <- c(x$res.t[int.indx, "est"], x$res.t[x$covpars,"est"])
+    parvals <- vector(length(d$pars), mode = "list")
+    names(parvals) <- d$pars
+    for (i in seq_along(d$pars)){
+      if (i != int.indx){
+        parvals[[i]] <- x$res.t[x$basepars[i], "est"]
+      } else {
+        parvals[[i]] <- c(x$res.t[int.indx, "est"],
+                          x$res.t[x$covpars,"est"])
+        names(parvals[[i]]) <- c("int", rownames(x$res.t)[x$covpars])
+      }
+      d$parvals <- parvals
+    }
   } else{
     print(paste0("SimPrep does not work for an object of class ", class(z)))
   }
@@ -61,10 +70,10 @@ SimPars <- function(simdist, newdata=NULL) {
   X <- if (length(newdata) == 0) matrix(0) else as.matrix(newdata)
   rpars <- vector(length(simdist$pars), mode = "list")
   for (i in seq_along(simdist$pars)){
-    if (simdist$pars[i] == simdist$location){
-      rpars[[i]] <- X %*% simdist$beta
+    if (length(simdist$parvals[[i]]) > 1){
+      rpars[[i]] <- X %*% simdist$parvals[[i]]
     } else{
-      rpars[[i]] <- simdist$parvals[i]
+      rpars[[i]] <- simdist$parvals[[i]]
     }
     rpars[[i]] <- simdist$inv.transform[[i]](rpars[[i]])
   }
@@ -250,18 +259,23 @@ rmvnormPars <- function(x, B){
   #   B: Number of samples.
   #
   # Returns:
-  #   List of matrixes with one matrix of sampled parameters not a function of 
-  #   covariates (parvals) and one matrix of covariate values for parameter 
-  #   that is a function of covariates (beta)
+  #   List of matrices for each parameter with rows equal to random samples
   sim <- matrix(nrow = B, ncol = nrow(x$res))
   colnames(sim) <- rownames(x$res)
   sim[, x$optpars] <- rmvnorm(B, x$opt$par, x$cov)
   sim[, x$fixedpars] <- rep(x$res.t[x$fixedpars, "est"], each = B)
   d <- x$dlist
-  par.indx <- which(x$dlist$pars != d$location)
-  sim <- list(parvals = sim[, par.indx, drop = FALSE],
-              beta = sim[, -par.indx, drop = FALSE])
-  return(sim)
+  int.indx <- which(x$dlist$pars == d$location)
+  par.rs <- vector(length(d$pars), mode = "list")
+  names(par.rs) <- d$pars
+  for (i in seq_along(d$pars)){
+    if (i != int.indx){
+      par.rs[[i]] <- as.matrix(sim[, i])
+    } else {
+      par.rs[[i]] <- sim[, c(int.indx, x$covpars)]
+    }
+  }
+  return(par.rs)
 }
 
 # PROBABILISTIC SENSITIVITY ANALYSIS -------------------------------------------
@@ -289,10 +303,9 @@ simPSA <- function(simdist, x, B, trans, t, newdata){
   dqaly <- rep(NA, B)
   for (i in 1:B){
     for (j in 1:ntrans){
-      simdist[[j]]$parvals <- rpars[[j]]$parvals[i, ]
-      simdist[[j]]$beta <- rpars[[j]]$beta[i, ]
+      simdist[[j]]$parvals <- lapply(rpars[[j]], function (x) x[i, ])
     }
-    sim <- simMS(x = simdist, trans = trans, t = 30, newdata = newdata)
+    sim <- simMS(x = simdist, trans = trans, t = t, newdata = newdata)
     dqaly[i] <- mean(sim$dqaly[, ncol(sim$dqaly)])
   }
   return(dqaly)
