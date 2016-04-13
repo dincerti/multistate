@@ -35,7 +35,7 @@ SimPrep <- function(x){
   if(class(x) == "flexsurvreg"){
     d <- x$dlist
     d$r <- x$dfns$r
-    int.indx <- which(d$ßpars == d$location)
+    int.indx <- which(d$pars == d$location)
     d$parvals <- x$res.t[x$basepars, "est"]
     d$parvals[int.indx] <- NA
     d$beta <- c(x$res.t[int.indx, "est"], x$res.t[x$covpars,"est"])
@@ -48,7 +48,7 @@ SimPrep <- function(x){
 # RETURN SIMULATION PARAMETERS FROM MODEL(S) -----------------------------------
 SimPars <- function(simdist, newdata=NULL) {
   # Returns model parameters needed to simulate a transition for
-  # a particular indiviudal
+  # a particular indiviudal. Used internally in simMS.
   #
   # Args:
   #   simdist: Information about the parametric distribution and the
@@ -74,14 +74,16 @@ SimPars <- function(simdist, newdata=NULL) {
 
 # SIMULATE MULTI-STATE MODEL ---------------------------------------------------
 simMS <- function(x, trans, t, newdata=NULL, start=1, tcovs=NULL, 
-                  rtreat=NULL, ptreat=NULL,
-                  r=.03, qol=NULL){
-  # Simulate a fitted multi-state model
+                  r=.03, qol=NULL, output = "matrix.list"
+#                  rtreat=NULL, ptreat=NULL,
+                  ){
+  # Simulate a fitted parametric semi-Markov multi-state model
   #
   # Args:
   #   x: List containing information about the parametric distribution and the
   #      estimated parameters.
   #   trans: Matrix indicating allowed transitions.
+  #   t: time to end simulation
   #   newdata: A n by k dataframe with n individuals and k covariates specifying 
   #            the values of the covariates in the fitted model. 
   #   start: Starting state of the simulation.
@@ -91,10 +93,16 @@ simMS <- function(x, trans, t, newdata=NULL, start=1, tcovs=NULL,
   #   r: Continuous time discount rate. default is 3%.
   #   qol: Vector containing quality of life weights for each state. Default is 
   #        weight of 1 for every state.
+  #   output: how should simulation present output? default is matrix.list which is
+  #           a list of 3 matrices st, t, and dqaly with rows for each 
+  #           individual. Columns of t contain times when individual changes states
+  #           which are shown in st. Columns of dqaly contain cumulative discounted QALYs 
+  #           at each transition. Option data.table provides same output in an
+  #           enhanced data.frame from the data.tabe package. Simlation is slightly slower 
+  #           using this option but output is perhaps easier to manipulate.
   #          
   # Returns:
-  #   Dataframe with columns for model state, simulation time, and discounted qalys
-  #   at each transition.
+  #   See output argument above
   if(length(qol)==0){
     qol <- rep(1, nrow(trans))
   }
@@ -145,8 +153,6 @@ simMS <- function(x, trans, t, newdata=NULL, start=1, tcovs=NULL,
           x.trans <- x[[transi[[j]]]]
           simpars <- SimPars(x.trans, newdata[todo, ])
           t.trans1[, j] <- do.call(x.trans$r, c(list(n=ni), simpars))
-          basepars <- BaseparsFlexsurv(model[[1]], newdata[todo, ])
-          #t.trans1[,j] <- do.call(modbase$dfns$r, c(list(n=ni, basepars[, 1], basepars[, 2])))
           if (is.null(x.trans$r)) stop("No random sampling function found for this model")
         } 
         ### END THIRD LOOP
@@ -177,11 +183,125 @@ simMS <- function(x, trans, t, newdata=NULL, start=1, tcovs=NULL,
     todo <- setdiff(todo, done)
   }
   ### END MAIN LOOP
-  list(st=unname(res.st), t=unname(res.t), dqaly=unname(res.dqaly))
+  if (output == "matrix.list"){
+      list(st=unname(res.st), t=unname(res.t), dqaly=unname(res.dqaly))
+  } else if (output == "data.table"){
+      nevents <- ncol(res.t)
+      res <- data.table(st = c(t(res.st)),
+                            t = c(t(res.t)),
+                            dqaly = c(t(res.dqaly)),
+                            event = rep(1:nevents, N),
+                            id = rep(seq(N), each = nevents))
+  }
 } 
+
+# SIMULATION RESULTS -----------------------------------------------------------
+simLOS <- function(sim, trans){
+  # Calculated length of stay and discounted QALYs in each non-absorbing state
+  # from a semi-Markov multi-state model.
+  #
+  # Args:
+  #   sim: Simulation output from simMS. May be either a list or a data.table.
+  #            estimated parameters for a given transition.
+  #   trans: Matrix indicating allowed transitions.
+  #
+  # Returns:
+  #   Dataframe with columns for state, length of stay, and discounted QALYs
+  if (class(sim)[1] == "data.table"){
+      x = copy(sim)
+      N <- length(unique(x$id))
+      x[, diff_t := c(diff(t), 0), by = id]
+      x[, diff_dqaly := c(diff(dqaly), 0), by = id]
+      los <- x[, .(los = sum(diff_t), dqalys = sum(diff_dqaly)),
+                     by = st][order(st)]
+      los$los <- los$los/N
+      los$dqalys <- los$dqalys/N
+      los <- los[-absorb, ]
+      los$st <- factor(rownames(trans)[-absorb])
+      setnames(los, c("state", "los", "dqalys"))
+  } else if (class(sim) == "list"){
+      n.states <- nrow(trans)
+      n <- nrow(sim$t)
+      absorb <- absorbing(trans)
+      d.t <- diff(t(cbind(sim$t, 0)))
+      d.dqaly <- diff(t(cbind(sim$dqaly, 0)))
+      st <- factor(t(sim$st), levels = 1:n.states)
+      los <- matrix(NA, nrow = n.states, ncol = 2)
+      colnames(los) <- c("los", "dqalys")
+      los[, 1] <- c(tapply(d.t, st, sum) / n)
+      los[, 2] <- c(tapply(d.dqaly, st, sum) / n)
+      los <- los[-absorb, ]
+      los <- data.frame(state = rownames(trans)[-absorb], los)
+  }
+  return(data.frame(los))
+}
+
+# RANDOM SAMPLE OF PARAMETER DISTRIBUTIONS -------------------------------------
+rmvnormPars <- function(x, B){
+  # Randomly sample parameters from flexsurv model from their multivariate 
+  # asymptotic distribution. This is a Quasi-Bayesian approach because 
+  # (for large samples), the posterior distribution of a parameter is close
+  # to the distribution of the MLE around the truth. Similar to 
+  # normboot.flexsurvreg but does not return predicted values. Used internally
+  # in simPSA
+  #
+  # Args:
+  #   x: A fitted model from flexsurvreg
+  #   B: Number of samples.
+  #
+  # Returns:
+  #   List of matrixes with one matrix of sampled parameters not a function of 
+  #   covariates (parvals) and one matrix of covariate values for parameter 
+  #   that is a function of covariates (beta)
+  sim <- matrix(nrow = B, ncol = nrow(x$res))
+  colnames(sim) <- rownames(x$res)
+  sim[, x$optpars] <- rmvnorm(B, x$opt$par, x$cov)
+  sim[, x$fixedpars] <- rep(x$res.t[x$fixedpars, "est"], each = B)
+  d <- x$dlist
+  par.indx <- which(x$dlist$pars != d$location)
+  sim <- list(parvals = sim[, par.indx, drop = FALSE],
+              beta = sim[, -par.indx, drop = FALSE])
+  return(sim)
+}
+
+# PROBABILISTIC SENSITIVITY ANALYSIS -------------------------------------------
+simPSA <- function(simdist, x, B, trans, t, newdata){
+  # Conduct probabilistic sensitivity analysis for semi-Markov multi-state 
+  # simulation
+  #
+  # Args:
+  #   simdist: Information about the parametric distribution and the
+  #            estimated parameters for a given transition. 
+  #   x: List of models (one for each transition) fit with flexsurvreg
+  #   B: Number of random samples
+  #   trans: Matrix indicating allowed transitions
+  #   t: time to end simulation
+  #   newdata: A n by k dataframe with n individuals and k covariates specifying 
+  #            the values of the covariates in the fitted model. 
+  #
+  # Returns:
+  #   Vector of discounted QALYs for each random sample of parameters
+  ntrans <- length(simdist)
+  rpars <- vector(4, mode = "list")
+  for (i in 1:ntrans){
+    rpars[[i]] <- rmvnormPars(x[[i]], B)
+  }
+  dqaly <- rep(NA, B)
+  for (i in 1:B){
+    for (j in 1:ntrans){
+      simdist[[j]]$parvals <- rpars[[j]]$parvals[i, ]
+      simdist[[j]]$beta <- rpars[[j]]$beta[i, ]
+    }
+    sim <- simMS(x = simdist, trans = trans, t = 30, newdata = newdata)
+    dqaly[i] <- mean(sim$dqaly[, ncol(sim$dqaly)])
+  }
+  return(dqaly)
+}
 
 # LIST OF DISTRIBUTIONS --------------------------------------------------------
 sim.dists <- list(
+  # This is a list of the distributions used in the flexsurv package. It does 
+  # not currently include the rng functions.
   genf = list(
     name="genf",
     pars=c("mu","sigma","Q","P"),
@@ -260,3 +380,4 @@ sim.dists <- list(
     inv.transforms=c(exp, exp)
   )
 )
+
