@@ -1,0 +1,213 @@
+---
+title: "Continuous Time Multi-State Models and Microsimulation"
+author: Devin Incerti
+output: 
+  beamer_presentation:
+    keep_tex: FALSE
+    toc: FALSE
+    includes:
+      in_header: template.tex
+    template: default.tex
+    latex_engine: xelatex
+---
+
+```{r echo=FALSE}
+library("knitr")
+read_chunk('multistate.R')
+```
+
+## Overview
+1. What are multi-state models?
+
+2. How can multi-state models be estimated?
+
+3. How can an estimated model be used to derive quantities of interest for health technology evaluation?
+
+## What is a Multi-State Model?
+* Model of how individuals move through multiple states in continuous time
+* 3 types of states
+    + Initial state
+    + Intermediate state
+    + Absorbing state
+* *Competing risk* models are a special case with one initial state and several mutually exclusive absorbing states
+* *Survival analysis* is a special case with one initial state (alive) and one absorbing state (dead)
+
+## Canonical Example: The (Reversible) Illness-Death Model
+\centering
+\begin{tikzpicture}[
+roundnode/.style={circle, draw=green!60, fill=green!5, very thick, minimum size=7mm},
+squarednode/.style={rectangle, draw=red!60, fill=red!5, very thick, minimum size=5mm},
+align=center,node distance=2.5cm]
+%Nodes
+\node[squarednode]      (healthy)                       {Inititial State \\(Healthy)};
+\node[squarednode]      (sick)       [right=of healthy] {Intermediate State \\(Sick)};
+\coordinate             (middle) at ($(healthy)!0.5!(sick)$);
+\node[squarednode]      (dead)       [below=of middle] {Absorbing State \\(Dead)};
+ 
+%Lines
+\draw[->] (healthy.south) -- ([xshift=-1ex]dead.north); 
+\draw[->] (sick.south) -- ([xshift=1ex]dead.north); 
+\draw[->] ([yshift=1ex]healthy.east) -- ([yshift=1ex]sick.west);
+\draw[->] ([yshift=-1ex]sick.west) -- ([yshift=-1ex]healthy.east);
+\end{tikzpicture}
+
+## Advantages for Parameter Estimation
+* Properly accounts for competing risks
+    + Individuals experiencing an event are no longer "at risk", which
+    decreases transition intensities
+* Flexible modeling of hazard rates
+    + **Time homogeneous markov models**: transition intensities are constant over time
+    + **Time inhomogeneous (clock-forward) markov models**: transition intensities depends on         time since entering the \underline{initial} state
+    + **Semi-markov (clock-reset) models**: transition intensities depends on time since                entering the \underline{current} state
+
+## Advantages for Health-Economic Modeling
+* Model is in continuous time
+    + Predicts exact length of time in states
+    + Do not need to worry about multiple events occurring during intervals
+* Model is at the individual level
+    + Can account for treatment heterogeneity
+    + Transition intensities can depend on prior history $\rightarrow$ fewer states than in cohort models
+    
+## Software for Estimating Multi-State Models
+* Nearly all of it is written in R
+* Prominent R packages
+    + *mstate*: non-parametric and semi-parametric models
+    + *flexsurv*: parametric models
+    + *msm*: missing information (e.g. do not know exact time of each transition)
+
+## A Liver Cirrhosis Example
+* To illustrate methods, lets consider a clinical trial where patients received "Placebo"" or "Prednisone"
+* Reversible illness death model with 3 states
+    + State 1: Normal prothrombin levels
+    + State 2: Low prothrombin levels
+    + State 3: Death
+* 4 possible transitions
+    + Normal to Low
+    + Low to Normal
+    + Low to Death
+    + Normal to Death
+
+## Examining the Data
+* A patient treated with Prednisone
+
+```{r setup, echo = FALSE, message=F, warning=F, include=FALSE}
+```
+
+```{r create_data, echo = FALSE}
+```
+
+```{r show_data, echo = FALSE, comment=NA}
+```
+
+* Summarizing the transitions
+```{r trans, comment=NA, echo=FALSE}
+```
+
+## Fitting Multi-State Models
+* Joint model if constraints in parameters across transitions; otherwise 
+transition specific models are more computationally efficient
+* Individuals entering "competing" states treated as censored
+* Types of models
+    * *Non-parametric*: fit separate Cox model to treatment and control
+    * *Semi-parametric*: clock-forward or clock-reset Cox models
+    * *Parametric*: clock-forward or clock-reset model with standard survival 
+    distributions (e.g. Weibull, Gompertz)
+
+```{r fit_cox, echo = FALSE}
+```
+
+```{r fit_weibull, echo = FALSE}
+```
+
+```{r fit_gompertz, echo = FALSE}
+```
+
+## Why do we Need Parametric Models?
+* We have Kaplan-Meier curves and Cox models so why use parametric models?
+* Some advantages of parametric approaches
+    + Extrapolation beyond time periods in data
+    + Prediction for new individuals
+    + Less prone to overfitting
+    + Faster simulations
+    + Time dependent effects (e.g. non-proportional hazards)
+* Estimates from flexible parametric models are very similar to non-parametric and semi-parametric alternatives
+* Model checking is essential though!
+
+## Some Model Checking
+```{r cumhaz_cox, echo = FALSE}
+```
+
+```{r cumhaz_parametric, echo = FALSE}
+```
+
+```{r cumhaz_plot, echo = FALSE}
+```
+
+## Transition Probabilities in Multi-State Models
+* A transition probability is the probability of being in state $X(T)=s$ at time $T$ given that an individual is in state $r$ at time $t_0$
+\begin{align} \label{eqn:tp}
+P_{rs}(t_0, T) = P(X(T)=s|X(t_0) = r)
+\end{align}
+* Given discount rate, $\beta(t)$, and quality of life weight, $q_s(t)$, discounted QALYs in state $s$ given being in state $r$ at time $t_0$ are
+\begin{align} \label{eqn:tp}
+\int_{t_0}^{T} q_s(t) \beta(t) P_{rs}(t_0, t)dt
+\end{align}
+* Total QALYs are calculated by adding up QALYs in each non-absorbing state
+
+## Estimating Transition Probabilities
+* Illness-death model example:
+    + Probability of transitioning from state 2 at time $t_0$ to state 3 at time $T$ is given by       multiplying:
+        1. Probability of transitioning to state 3 at some time before $T$
+        2. Probability of remaining in state 2 until making the transition to 3
+* General case for Markov models
+    + Transition probabilities can be estimated by solving the *Kolmogorov forward equation*
+    + Solution can be approximated by the *Aelen-Johansen estimator*
+* Simulation needed for Semi-Markov Models
+    + Aelen-Johansen estimator does not apply because transition probabilities from intermediate       states depend on when the state was entered
+
+## Transition Probabilities in Clock-Forward Cox Models
+Using R function `probtrans` from *mstate* package
+```{r cf_cox_tp, echo = FALSE}
+```
+
+## Transition Probabilities in Clock-Reset Cox Models
+Using R function `mssample` from *mstate* package
+```{r cr_cox_tp, echo = FALSE, cache = T}
+```
+
+## Lifetime Simulation 
+* Parametric models can be used to simulate outcomes beyond time in data 
+* I've created function `simMS` for parametric Semi-Markov models
+    + Time (and age) move forward as individuals jump from one event to the next
+    + Simulates outcomes for a population of individuals with differing covariate values
+    + Simulation stops when all individuals reach absorbing states or time has reached                   preset ending time
+    + Can be used with any distribution by supplying a function to generate random numbers and         using the custom distribution framework in *flexsurv*
+    + Allows analyst to specify different distributions for each transition
+    + Only valid for semi-Markov models; use `probtrans` for clock-forward Markov models
+
+## Benefits of Simulation
+* Can calculate standard quantities of interest
+    + Discounted QALYs (dQALYs)
+    + Length of stay (LOS) in each state
+    
+\begin{center}
+```{r cr_parametric_sim,results='asis', echo = FALSE, comment=NA, cache =T}
+```    
+\end{center}
+
+* Don't need analytical expressions to estimate other more complicated quantities
+* Assess uncertainty (e.g. probabilistic sensitivity analysis)
+```{r psa, echo = FALSE, comment=NA, cache=T}
+```    
+
+## When Can Multi-State Models be Used?
+* Requirements
+    + Individual time to event data must be available for each transition
+* Scenarios in which it is most useful
+    + Individuals spend a lot of time in each state
+    + Risks of new events depend on time in state 
+    + Chance of multiple events within an interval
+    + Need estiamtes for representative patient populations
+* Some examples
+    + *Transplantation*: functioning transplant $\Leftrightarrow$ failed transplant $\Rightarrow$ death
+    + *Oncology*: surgery $\Rightarrow$ local recurrence, distant metastasis $\Rightarrow$ death
